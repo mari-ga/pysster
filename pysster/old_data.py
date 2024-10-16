@@ -416,19 +416,19 @@ class Data:
             np.random.shuffle(idx)
         while True:
             for i in range(0, len(idx), batch_size):
-                batch_indices = idx[i:i+batch_size]
                 if use_positionwise:
                     out_data = self._get_positionwise_data(idx, i, batch_size)
                     if meta and len(self.meta) > 0:
                         out_data = [out_data, self._get_additional_data(idx, i, batch_size)]
                 else:
-                    out_data = np.array([self.data[x] for x in batch_indices])
+                    out_data = np.array([self.data[x] for x in idx[i:(i + batch_size)]])
                     if meta and len(self.meta) > 0:
-                        out_data = [out_data, self._get_additional_data(batch_indices, 0, len(batch_indices))]
+                        out_data = [out_data, self._get_additional_data(idx, i, batch_size)]
 
-                if labels and self.labels is not None:
-                    out_labels = np.array([self.labels[x] for x in batch_indices])
-                    
+                if labels:
+                    out_labels = np.array([self.labels[x] for x in idx[i:(i + batch_size)]])
+
+                    # Calculate sample weights if class_weights are provided
                     if class_weights is not None:
                         sample_weights = np.array([class_weights[np.argmax(label)] for label in out_labels])
                         yield (out_data, out_labels, sample_weights)

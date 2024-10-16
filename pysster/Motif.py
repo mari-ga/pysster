@@ -32,7 +32,7 @@ class Motif:
         pwm : numpy.ndarray
             A matrix of shape (sequence length, alphabet length) containing probabilities.
         """
-        self.alphabet = ''.join(sorted(alphabet))
+        self.alphabet = alphabet
         if sequences != None:
             self._compute_counts(sequences)
         else:
@@ -190,7 +190,9 @@ class Motif:
             if x > info_content: break
             y_tick = h_top + h_col - h_col*(x/info_content)
             img_draw.line((w_col-20, y_tick, w_col, y_tick), fill = "#000000", width = 5)
-            textwidth, textheight = img_draw.textsize(str(x), font)
+            left, top, right, bottom = img_draw.textbbox((0, 0), str(x), font=font)
+            textwidth = right - left
+            textheight = bottom - top
             img_draw.text((w_col-25-textwidth, y_tick - textheight//2 - 3),
                           str(x), (0, 0, 0), font = font)
 
@@ -200,7 +202,8 @@ class Motif:
         folder = dirname(__file__)
         font = ImageFont.truetype("{}/resources/motif/LiberationSans-Regular.ttf".format(folder), 50)
         for i, _ in enumerate(self.pwm):
-            textwidth, _ = img_draw.textsize(str(i+1), font)
+            left, top, right, bottom = img_draw.textbbox((0, 0), str(i+1), font=font)
+            textwidth = right - left
             img_draw.text((x_tick + w_col//2 - textwidth//2, h_col + h_top),
                           str(i+1), (0, 0, 0), font = font)
             x_tick += w_col

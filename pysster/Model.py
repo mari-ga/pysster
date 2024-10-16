@@ -6,17 +6,17 @@ import random
 from os import remove
 from copy import deepcopy
 from tempfile import gettempdir
-from keras import backend as K
-from keras.callbacks import ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
-from keras.models import load_model
-from keras.models import Model as KModel
-from keras.layers import Dropout, Conv1D, MaxPooling1D, Flatten, Dense
+from tensorflow.keras import backend as K
+from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
+from keras.models import load_model as keras_load_model
+from tensorflow.keras.models import Model as KModel
+from tensorflow.keras.layers import Dropout, Conv1D, MaxPooling1D, Flatten, Dense
 from keras.layers import Input, LSTM, GRU, Bidirectional, concatenate
 from keras.constraints import max_norm
-from keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam
 from keras.initializers import RandomUniform
 import keras.activations
-
+import tensorflow as tf
 
 import pysster.utils as utils
 from pysster.Motif import Motif
@@ -93,25 +93,10 @@ class Model:
         """ Initialize the model with the given parameters.
 
         Example: providing the params dict {'conv_num': 1, 'kernel_num': 20, 'dropout_input': 0.0}
-        will set these 3 parameters to the provided values. **All other parameters will 
-        have default values (see above)**. A data object must be provided to infer the input 
-        shape and number of classes.
+        will set these 3 parameters to the provided values. All other parameters will 
+        have default values. A data object must be provided to infer the input shape and
+        number of classes.
 
-        By default, multiple layers of the same type will share dependent parameters: 
-        {"dense_num": 3, "neuron_num": 100} creates a model with 100 neurons in each of the three
-        dense layers.
-        
-        To specify parameters for individual layers tuples must be provided:
-        {"dense_num": 3, "neuron_num": (300, 100, 30)} creates a model in which the first layer
-        has 300 neurons, the second 100 and the third 30.
-
-        Another example: the following model has two convolutional layers (the first layer
-        has 10 kernels of length 30, the second layer 20 kernels of length 3) and two dense
-        layers (first dense layer has 100 neurons, the second 10).
-        
-        '{"conv_num": 2, "kernel_num": (10, 20), "kernel_len": (30, 3),
-        '"dense_num": 2, "neuron_num": (100, 10)}
-        
         Parameters
         ----------
         params : dict
@@ -175,21 +160,21 @@ class Model:
         np.random.seed(self.params["seed"])
         random.seed(self.params["seed"])
         n_train = len(data._get_idx('train'))
-        n_train = n_train//self.params['batch_size'] + (n_train%self.params['batch_size'] != 0)
+        n_train = n_train // self.params['batch_size'] + (n_train % self.params['batch_size'] != 0)
         n_val = len(data._get_idx('val'))
-        n_val = n_val//self.params['batch_size'] + (n_val%self.params['batch_size'] != 0)
-        self.model.fit_generator(generator = data._data_generator('train',self.params['batch_size'],
-                                                                  True, seed=self.params["seed"]),
-                                 steps_per_epoch = n_train,
-                                 epochs = self.params['epochs'],
-                                 callbacks = self.callbacks,
-                                 verbose = verbose,
-                                 validation_data = data._data_generator('val',self.params['batch_size'],
-                                                                        True, seed=self.params["seed"]),
-                                 validation_steps = n_val,
-                                 class_weight = data._get_class_weights())
-        self.model = load_model(self.temp_file)
-        remove(self.temp_file)
+        n_val = n_val // self.params['batch_size'] + (n_val % self.params['batch_size'] != 0)
+
+        self.model.fit(
+            data._data_generator('train', self.params['batch_size'], True, seed=self.params["seed"]),
+            steps_per_epoch=n_train,
+            epochs=self.params['epochs'],
+            callbacks=self.callbacks,
+            verbose=verbose,
+            validation_data=data._data_generator('val', self.params['batch_size'], True, seed=self.params["seed"]),
+            validation_steps=n_val
+        )
+        self.model = keras_load_model(self.temp_file.replace('.hdf5', '.keras'))
+        remove(self.temp_file.replace('.hdf5', '.keras'))
 
 
     def predict(self, data, group):
@@ -212,10 +197,11 @@ class Model:
         predictions : numpy.ndarray
             An array containing predicted probabilities.
         """
-        data_gen = data._data_generator(group, self.params['batch_size'], False, False)
+        
         idx = data._get_idx(group)
         n = max(len(idx)//self.params['batch_size'] + (len(idx)%self.params['batch_size'] != 0), 1)
-        return self.model.predict_generator(data_gen, n)
+        data_gen = data._data_generator(group,self.params['batch_size'],False)
+        return self.model.predict(data_gen, steps=n)
 
 
     def get_max_activations(self, data, group):
@@ -262,7 +248,7 @@ class Model:
 
 
     def visualize_kernel(self, activations, data, kernel, folder, colors_sequence={}, colors_structure={}):
-        """ Get a number of visualizations and an importance score for a convolutional kernel.
+        """ Get a number of visualizations and an importane score for a convolutional kernel.
 
         This function creates three (or four) output files: 1) a sequence(/structure) motif that the
         kernel has learned to detect, 2) a histogram/activation plot showing the 
@@ -545,7 +531,7 @@ class Model:
         if 'positionwise' in dir(data) and len(data.positionwise) > 0:
             raise RuntimeError("Optimization currently not possible for a model with additional position-wise input.")
         if nodes == None:
-            nodes = list(range(self.model.get_layer(layer_name).output_shape[-1]))
+            nodes = list(range(self.model.get_layer(layer_name).output.shape[-1]))
         if layer_name == self.model.layers[-1].name:
             model = self._change_activation()
         else:
@@ -666,13 +652,13 @@ class Model:
             self.inputs = [self.main_input]
         self.model = KModel(inputs=self.inputs, outputs=[self.cnn])
         self.model.compile(loss = self.params['loss'],
-                           optimizer = Adam(lr = self.params["learning_rate"]))
+                           optimizer = Adam(learning_rate = self.params["learning_rate"]))
 
 
     def _prepare_callbacks(self):
         reduce_lr = ReduceLROnPlateau('val_loss', 0.5, self.params["patience_lr"], verbose = 0)
         stopper = EarlyStopping('val_loss', patience = self.params["patience_stopping"])
-        checkpoints = ModelCheckpoint(self.temp_file, "val_loss", save_best_only = True)
+        checkpoints = ModelCheckpoint(self.temp_file.replace('.hdf5', '.keras'), "val_loss", save_best_only = True)
         self.callbacks = [reduce_lr, stopper, checkpoints]
 
 
@@ -714,8 +700,11 @@ class Model:
             layer_idx = 1
         else:
             layer_idx = 2
-        get_out = K.function([self.model.layers[0].input, K.learning_phase()],
-                             [self.model.layers[layer_idx].output[:,:,kernel]])
+        target_layer = self.model.layers[layer_idx]
+        @tf.function
+        def get_activations(inputs):
+            inputs = tf.cast(inputs, tf.float32)
+            return target_layer(inputs)[:,:,kernel]
         if '_data_gen_no_labels_meta' in dir(data):
             data_gen = data._data_gen_no_labels_meta(group, self.params['batch_size'], idx)
         else:
@@ -723,24 +712,34 @@ class Model:
         n = max(len(idx)//self.params['batch_size'] + (len(idx)%self.params['batch_size'] != 0), 1)
         activations = []
         for _ in range(n):
-            activations.append(get_out([next(data_gen), 0])[0])
+            batch = next(data_gen)
+            activations.append(get_activations(batch))
         if len(activations) == 1:
             return activations[0]
         else:
             return np.vstack(activations)
 
-
     def _optimize_input(self, model, layer_name, node_index, input_data, lr, steps):
-        model_input = model.layers[0].input
-        loss = K.max(model.get_layer(layer_name).output[...,node_index])
-        grads = K.gradients(loss, model_input)[0]
-        grads = K.l2_normalize(grads, axis = 1)
-        iterate = K.function([model_input, K.learning_phase()], [loss, grads])
+        target_layer = model.get_layer(layer_name)
+        
+        
+        @tf.function
+        def compute_loss_and_grads(inputs):
+            with tf.GradientTape() as tape:
+                tape.watch(inputs)
+                activations = target_layer(inputs)
+                loss = tf.reduce_max(activations[..., node_index])
+            grads = tape.gradient(loss, inputs)
+            return loss, grads
+        
+        input_tensor = tf.Variable(input_data)
+        
         for _ in range(steps):
-            loss_value, grads_value = iterate([input_data, 0])
-            input_data += grads_value * lr
-        return input_data[0], loss_value > 2
-
+            loss, grads = compute_loss_and_grads(input_tensor)
+            grads_normalized = tf.math.l2_normalize(grads, axis=1)
+            input_tensor.assign_add(grads_normalized * lr)
+        
+        return input_tensor.numpy()[0], loss.numpy() > 2
 
     def _extract_pwm(self, input_data, annotation, alphabet):
         pwm = []
@@ -783,3 +782,4 @@ class Model:
         model = load_model(path)
         remove(path)
         return model
+

@@ -86,7 +86,7 @@ class Grid_Search:
                 max_metric = metric[-1]
                 utils.save_model(model, best_model_path)
             K.clear_session()
-            K.reset_uids()
+           
             if not verbose: continue
             print("\n=== Summary ===")
             print("Model {}/{} = {:.5f} weighted avg {}".format(i+1, len(self.candidates), metric[i], metric_name))
@@ -94,9 +94,9 @@ class Grid_Search:
                 if not param in ["input_shape"]:
                     print(" - {}: {}".format(param, candidate[param]))
         # load the best model (and remove it from disc)
-        model = utils.load_model(best_model_path)
+        model = utils.load_model(best_model_path,data)
         remove(best_model_path)
-        remove("{}.h5".format(best_model_path))
+        remove(f"{best_model_path}.keras")
         # save a formatted summary of all trained models
         table = self._grid_search_table(metric, metric_name)
         return model, table
