@@ -9,12 +9,12 @@ setup(
     author_email = 'budach@molgen.mpg.de',
     license = 'MIT',
     install_requires =  [
-        'numpy>=1.14.0',
+        'numpy',
         'matplotlib',
         'seaborn',
         'scikit-learn',
-        'keras<2.3.0',
-        'tensorflow<2.0',
+        'keras',
+        'tensorflow',
         'h5py',
         'logging_exceptions',
         'Pillow',
@@ -22,7 +22,7 @@ setup(
         'fastcluster'
     ],
     packages = ['pysster'],
-    python_requires = '>=3.5',
+    python_requires = '<=3.10',
     include_package_data = True,
     zip_safe = False
 )
